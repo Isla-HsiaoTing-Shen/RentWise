@@ -1,0 +1,21 @@
+# ── Credentials ───────────────────────────────
+.env
+
+# ── Raw data (too large for GitHub) ───────────
+raw_data/
+
+# ── Python cache ──────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# ── Streamlit cache ───────────────────────────
+.streamlit/
+
+# ── VS Code ───────────────────────────────────
+.vscode/
+
+# ── OS files ──────────────────────────────────
+.DS_Store
+Thumbs.db
