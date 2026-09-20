@@ -79,94 +79,79 @@ st.markdown(
     unsafe_allow_html=True
 )
 st.markdown('<div class="page-title">💰 Is This Rent Fair?</div>', unsafe_allow_html=True)
-st.markdown('<div class="page-sub">Compare your rental price against the suburb\'s market benchmark. Covers all NSW suburbs with rental bond data (2024–2025).</div>', unsafe_allow_html=True)
-st.info("⚠️ **Note:** The lowest prices may include individual rooms in share houses (Flat/Unit listings). Use the **median** as the most reliable market reference.")
+st.markdown('<div class="page-sub">Compare your weekly rent with the rents on newly lodged rental bonds in the same postcode (NSW Fair Trading, 2024–2025).</div>', unsafe_allow_html=True)
+st.info("ℹ️ Rent data is grouped by **postcode**, so suburbs that share a postcode share the same numbers. The figures come from bonds lodged for new tenancies, not from every current tenant.")
+
+# ── Options ───────────────────────────────────────────────────────────────────
+# Property type shown on the website -> code used in the bond data
+PROPERTY_TYPES = {
+    "Flat / Unit": "F",
+    "House": "H",
+    "Townhouse / Terrace": "T",
+}
+
+# Bedroom choices for each property type (edit these lists if you want more or fewer)
+BEDROOM_OPTIONS = {
+    "Flat / Unit": [0, 1, 2, 3, 4],
+    "House": [1, 2, 3, 4, 5, 6],
+    "Townhouse / Terrace": [2, 3, 4],
+}
+
+def bedroom_label(bedrooms, property_label):
+    if bedrooms == 0 and property_label == "Flat / Unit":
+        return "Studio (0 bedrooms)"
+    if bedrooms == 1:
+        return "1 bedroom"
+    return f"{bedrooms} bedrooms"
 
 # ── Functions ─────────────────────────────────────────────────────────────────
 @st.cache_data(ttl=600)
 def load_suburbs():
     conn = get_connection()
     df = pd.read_sql("""
-        SELECT DISTINCT s.suburb_name
-        FROM dbo.rentals r
-        JOIN dbo.suburbs s ON r.suburb_id = s.suburb_id
-        ORDER BY s.suburb_name
+        SELECT suburb_name, postcode, lga_name
+        FROM dbo.postcode_suburb
+        WHERE postcode IN (SELECT DISTINCT postcode FROM dbo.rent_stats)
+        ORDER BY suburb_name, postcode
     """, conn)
-    return df['suburb_name'].tolist()
+    df["label"] = (df["suburb_name"].str.title() + " — "
+                   + df["postcode"].astype(str) + " (" + df["lga_name"] + ")")
+    return df
 
 @st.cache_data(ttl=300)
-def get_benchmark(suburb_name, prop_type, bedrooms):
+def get_rent_stats(postcode, dwelling_type, bedrooms):
     conn = get_connection()
-    extra_filters = ""
-    extra_params  = []
-    if prop_type != "Any":
-        extra_filters += " AND r.property_type = ?"
-        extra_params.append(prop_type)
-    if bedrooms != "Any":
-        extra_filters += " AND r.bedrooms = ?"
-        extra_params.append(int(bedrooms))
-    query = f"""
-        SELECT r.price_weekly
-        FROM dbo.rentals r
-        JOIN dbo.suburbs s ON r.suburb_id = s.suburb_id
-        WHERE s.suburb_name = ?
-        AND r.price_weekly BETWEEN 100 AND 5000
-        {extra_filters}
-    """
-    params = [suburb_name] + extra_params
-    df = pd.read_sql(query, conn, params=params)
-    if df.empty or len(df) == 0:
-        return None
-    prices = df['price_weekly'].dropna()
-    return {
-        'total_listings': len(prices),
-        'min_rent':       int(prices.min()),
-        'max_rent':       int(prices.max()),
-        'avg_rent':       float(prices.mean()),
-        'p25':            float(prices.quantile(0.25)),
-        'median_rent':    float(prices.quantile(0.50)),
-        'p75':            float(prices.quantile(0.75)),
-    }
+    return pd.read_sql("""
+        SELECT n, median_rent, p25_rent, p75_rent, rent_min, rent_max, tier
+        FROM dbo.rent_stats
+        WHERE postcode = ? AND dwelling_type = ? AND bedrooms = ?
+    """, conn, params=[int(postcode), dwelling_type, int(bedrooms)])
 
 @st.cache_data(ttl=300)
-def get_breakdown(suburb_name, prop_type, bedrooms):
+def get_postcode_overview(postcode):
     conn = get_connection()
-    extra_filters = ""
-    params = [suburb_name]
-    if prop_type != "Any":
-        extra_filters += " AND r.property_type = ?"
-        params.append(prop_type)
-    if bedrooms != "Any":
-        extra_filters += " AND r.bedrooms = ?"
-        params.append(int(bedrooms))
-    query = f"""
-        SELECT r.bedrooms, r.property_type,
-               COUNT(*) AS listings,
-               AVG(CAST(r.price_weekly AS FLOAT)) AS avg_rent,
-               MIN(r.price_weekly) AS min_rent,
-               MAX(r.price_weekly) AS max_rent
-        FROM dbo.rentals r
-        JOIN dbo.suburbs s ON r.suburb_id = s.suburb_id
-        WHERE s.suburb_name = ?
-        AND r.price_weekly BETWEEN 100 AND 5000
-        AND r.bedrooms IS NOT NULL
-        {extra_filters}
-        GROUP BY r.bedrooms, r.property_type
-        ORDER BY r.bedrooms, r.property_type
-    """
-    return pd.read_sql(query, conn, params=params)
+    return pd.read_sql("""
+        SELECT dwelling_type, bedrooms, n, median_rent, p25_rent, p75_rent, tier
+        FROM dbo.rent_stats
+        WHERE postcode = ? AND tier <> 'insufficient'
+        ORDER BY dwelling_type, bedrooms
+    """, conn, params=[int(postcode)])
 
 # ── Input ─────────────────────────────────────────────────────────────────────
-suburb_list = load_suburbs()
+suburbs_df = load_suburbs()
 
 with st.container():
     c1, c2, c3, c4, c5 = st.columns([2, 1, 1, 1, 1])
     with c1:
-        suburb = st.selectbox("Suburb", suburb_list)
+        label = st.selectbox("Suburb (you can also type a postcode)", suburbs_df["label"].tolist())
     with c2:
-        prop_type = st.selectbox("Property type", ["Any", "apartment", "house", "townhouse", "other"])
+        property_label = st.selectbox("Property type", list(PROPERTY_TYPES.keys()))
     with c3:
-        bedrooms = st.selectbox("Bedrooms", ["Any", 1, 2, 3, 4, 5])
+        bedrooms = st.selectbox(
+            "Bedrooms",
+            BEDROOM_OPTIONS[property_label],
+            format_func=lambda b: bedroom_label(b, property_label),
+        )
     with c4:
         your_rent = st.number_input("Your weekly rent ($)", min_value=50, max_value=10000, value=500, step=10)
     with c5:
@@ -175,80 +160,103 @@ with st.container():
 
 # ── Results ───────────────────────────────────────────────────────────────────
 if check:
-    result = get_benchmark(suburb, prop_type, bedrooms)
+    selected = suburbs_df[suburbs_df["label"] == label].iloc[0]
+    postcode = int(selected["postcode"])
+    dwelling_type = PROPERTY_TYPES[property_label]
 
-    if result is None or result.get('total_listings', 0) == 0:
-        st.warning("Not enough data for this combination. Try selecting 'Any' for property type or bedrooms.")
-        st.stop()
+    # Show which suburbs share this postcode
+    names = suburbs_df[suburbs_df["postcode"] == postcode]["suburb_name"].str.title().tolist()
+    shown = ", ".join(names[:8])
+    if len(names) > 8:
+        shown += f" and {len(names) - 8} more"
+    st.caption(f"Postcode {postcode} covers: {shown}")
 
-    median   = float(result['median_rent'])
-    p25      = float(result['p25'])
-    p75      = float(result['p75'])
-    avg      = float(result['avg_rent'])
-    total    = int(result['total_listings'])
-    diff     = your_rent - median
-    diff_pct = (diff / median) * 100
+    stats = get_rent_stats(postcode, dwelling_type, bedrooms)
+    what = f"{property_label.lower()}, {bedroom_label(bedrooms, property_label).lower()}"
 
-    if your_rent <= p25:
-        verdict_class = "verdict-cheap"
-        verdict_icon  = "🎉"
-        verdict_title = "Great deal — below market"
-        verdict_desc  = f"Your rent is ${abs(diff):,.0f}/week ({abs(diff_pct):.0f}%) below the suburb median. You're in the cheapest 25% of listings."
-    elif your_rent <= median:
-        verdict_class = "verdict-cheap"
-        verdict_icon  = "✅"
-        verdict_title = "Good value — at or below median"
-        if abs(diff) < 1:
-            verdict_desc = f"Your rent is exactly at the suburb median of ${median:,.0f}/week."
-        else:
-            verdict_desc = f"Your rent is ${abs(diff):,.0f}/week ({abs(diff_pct):.0f}%) below the suburb median. Solid value for this area."
-    elif your_rent <= p75:
-        verdict_class = "verdict-fair"
-        verdict_icon  = "⚖️"
-        verdict_title = "Fair — around market rate"
-        verdict_desc  = f"Your rent is ${diff:,.0f}/week ({diff_pct:.0f}%) above the median but within the normal range for this suburb."
+    if stats.empty:
+        st.warning(f"No rental bonds were recorded for a {what} in postcode {postcode}.")
     else:
-        verdict_class = "verdict-pricey"
-        verdict_icon  = "⚠️"
-        verdict_title = "Pricey — above market"
-        verdict_desc  = f"Your rent is ${diff:,.0f}/week ({diff_pct:.0f}%) above the suburb median. You may be able to negotiate or find better value nearby."
+        row = stats.iloc[0]
+        n = int(row["n"])
+        tier = row["tier"]
 
-    st.markdown(f"""
-    <div class="verdict {verdict_class}">
-        <div class="verdict-icon">{verdict_icon}</div>
-        <div>
-            <div class="verdict-title">{verdict_title}</div>
-            <div class="verdict-desc">{verdict_desc}</div>
-        </div>
-    </div>""", unsafe_allow_html=True)
+        if tier == "insufficient":
+            st.warning(f"Not enough data: only {n} rental bonds for a {what} in postcode {postcode}. We need at least 10 to show a result.")
+        else:
+            median = float(row["median_rent"])
+            p25 = float(row["p25_rent"])
+            p75 = float(row["p75_rent"])
+            rent_min = float(row["rent_min"])
+            rent_max = float(row["rent_max"])
 
-    stat_items = [
-        (f"${your_rent:,}",   "Your rent"),
-        (f"${median:,.0f}",   "⭐ Market median"),
-        (f"${p25:,.0f}",      "💚 Cheapest 25% pay under"),
-        (f"${p75:,.0f}",      "🔴 Top 25% pay over"),
-    ]
-    cols = st.columns(len(stat_items))
-    for col, (val, lbl) in zip(cols, stat_items):
-        col.markdown(f"""<div class="stat-box">
-            <div class="val">{val}</div><div class="lbl">{lbl}</div>
-        </div>""", unsafe_allow_html=True)
+            if tier == "full":
+                diff = your_rent - median
+                diff_pct = (diff / median) * 100
+                direction = "above" if diff >= 0 else "below"
+                if your_rent <= p25:
+                    verdict_class = "verdict-cheap"
+                    verdict_icon = "🎉"
+                    verdict_title = "Great deal — below the typical range"
+                    verdict_desc = f"Your rent is ${abs(diff):,.0f}/week ({abs(diff_pct):.0f}%) below the median. It falls in the cheapest quarter of recent bonds."
+                elif your_rent <= p75:
+                    verdict_class = "verdict-fair"
+                    verdict_icon = "⚖️"
+                    verdict_title = "Fair — within the typical range"
+                    verdict_desc = f"Your rent is ${abs(diff):,.0f}/week ({abs(diff_pct):.0f}%) {direction} the median. It falls in the middle 50% of recent bonds."
+                else:
+                    verdict_class = "verdict-pricey"
+                    verdict_icon = "⚠️"
+                    verdict_title = "Pricey — above the typical range"
+                    verdict_desc = f"Your rent is ${abs(diff):,.0f}/week ({abs(diff_pct):.0f}%) above the median. It falls in the most expensive quarter of recent bonds."
 
-    st.markdown("<br>", unsafe_allow_html=True)
+                st.markdown(f"""
+                <div class="verdict {verdict_class}">
+                    <div class="verdict-icon">{verdict_icon}</div>
+                    <div>
+                        <div class="verdict-title">{verdict_title}</div>
+                        <div class="verdict-desc">{verdict_desc}</div>
+                    </div>
+                </div>""", unsafe_allow_html=True)
+            else:
+                st.info(f"Limited data: this is based on only {n} rental bonds, so we do not give a verdict. Use the numbers below as a rough guide only.")
 
-    breakdown = get_breakdown(suburb, prop_type, bedrooms)
-    if not breakdown.empty:
-        breakdown['bedrooms'] = breakdown['bedrooms'].astype(int)
-        breakdown['avg_rent'] = breakdown['avg_rent'].round(0).astype(int)
-        breakdown = breakdown.rename(columns={
-            'bedrooms': 'Bedrooms', 'property_type': 'Type',
-            'listings': 'Listings', 'avg_rent': 'Avg Rent/wk',
-            'min_rent': 'Min', 'max_rent': 'Max'
+            stat_items = [
+                (f"${your_rent:,}", "Your rent"),
+                (f"${median:,.0f}", "⭐ Median rent"),
+                (f"${p25:,.0f}", "💚 25% of bonds are below"),
+                (f"${p75:,.0f}", "🔴 25% of bonds are above"),
+            ]
+            cols = st.columns(len(stat_items))
+            for col, (val, lbl) in zip(cols, stat_items):
+                col.markdown(f"""<div class="stat-box">
+                    <div class="val">{val}</div><div class="lbl">{lbl}</div>
+                </div>""", unsafe_allow_html=True)
+
+            st.caption(
+                f"Based on {n:,} rental bonds lodged in 2024–2025. "
+                f"Lowest and highest recorded: \\${rent_min:,.0f} to \\${rent_max:,.0f} "
+                f"(extreme values may be unusual listings, so use the median and typical range instead)."
+            )
+
+    # Overview of everything we can show for this postcode
+    overview = get_postcode_overview(postcode)
+    if not overview.empty:
+        overview = overview.copy()
+        for col in ["median_rent", "p25_rent", "p75_rent"]:
+            overview[col] = overview[col].astype(float).round(0).astype(int)
+        overview["dwelling_type"] = overview["dwelling_type"].map({
+            "F": "Flat / Unit", "H": "House", "T": "Townhouse / Terrace"})
+        overview["bedrooms"] = overview["bedrooms"].astype(int)
+        overview["tier"] = overview["tier"].map({"full": "Full", "limited": "Limited data"})
+        overview = overview.rename(columns={
+            "dwelling_type": "Type", "bedrooms": "Bedrooms", "n": "Bonds",
+            "median_rent": "Median/wk", "p25_rent": "25% below", "p75_rent": "25% above",
+            "tier": "Data",
         })
+        st.markdown("<br>", unsafe_allow_html=True)
         st.markdown(f"""<div class="market-card">
-            <h4>📊 Rent breakdown — {suburb}{f' · {prop_type}' if prop_type != 'Any' else ''}{f' · {bedrooms}BR' if bedrooms != 'Any' else ''}</h4>
+            <h4>📊 All rents in postcode {postcode}</h4>
         </div>""", unsafe_allow_html=True)
-        st.dataframe(breakdown, use_container_width=True, hide_index=True)
-        st.caption("Source: NSW Fair Trading rental bond lodgements 2024–2025")
-
-        
+        st.dataframe(overview, use_container_width=True, hide_index=True)
+        st.caption("Source: NSW Fair Trading rental bond lodgements 2024–2025. Combinations with fewer than 10 bonds are not shown.")
