@@ -1,0 +1,9 @@
+# password
+.env
+
+# Raw data from NSW Fair Trading 
+data/
+
+# Python auto save
+__pycache__/
+
