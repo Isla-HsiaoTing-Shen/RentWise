@@ -2,10 +2,6 @@
    02_profiling.sql
    Data profiling of raw_bond_lodgements (2021–2025).
 
-   Purpose: understand the data BEFORE cleaning it. Nothing is changed here.
-   Each section answers one question. Run one section at a time
-   (highlight it, then press Run) and record the findings in
-   docs/data_quality_log.md.
 ============================================================================= */
 
 

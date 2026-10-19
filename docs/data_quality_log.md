@@ -262,3 +262,21 @@
 **Action:**
 - Report a median only when a combination has at least 30 rows.
 - Combinations below 30 rows are shown as "insufficient data" (not removed from the clean table).
+
+### Cleaning summary
+
+Rules were added one at a time; each row is counted under the first rule that removes it.
+
+| Rule | Rows left | Rows removed | % of raw |
+|---|---|---|---|
+| Raw data | 1,643,058 | – | – |
+| 1. Dwelling type not F/H/T | 1,530,102 | 112,956 | 6.87% |
+| 2. Bedrooms unknown (U) | 1,515,858 | 14,244 | 0.87% |
+| 3. Weekly rent unknown (U) | 1,512,707 | 3,151 | 0.19% |
+| 4. 0-bedroom house/terrace | 1,511,095 | 1,612 | 0.10% |
+| 5. Above bedroom cap (F/T > 6, H > 12) | 1,510,944 | 151 | 0.01% |
+| 6. Rent below $100 | 1,510,133 | 811 | 0.05% |
+| 7. Postcode 2617 (ACT only) | 1,510,130 | 3 | <0.01% |
+| **Total removed** | | **132,928** | **8.09%** |
+
+Most removals (85%) come from Rule 1, which excludes non-whole-dwelling rentals and unknown types. Rules 2–7 together remove only 1.2% of rows.
