@@ -280,3 +280,18 @@ Rules were added one at a time; each row is counted under the first rule that re
 | **Total removed** | | **132,928** | **8.09%** |
 
 Most removals (85%) come from Rule 1, which excludes non-whole-dwelling rentals and unknown types. Rules 2–7 together remove only 1.2% of rows.
+
+
+### Views (05_create_views.sql)
+
+| View | One row per | Purpose |
+|---|---|---|
+| vw_rent_benchmark | postcode × dwelling type × bedroom group (2025) | P25 / median / P75 rent benchmark |
+| vw_rent_trend | postcode × dwelling type × bedroom group × quarter | Quarterly median rent trend |
+| vw_rent_trend_nsw | dwelling type × bedroom group × quarter | NSW-wide comparison line |
+
+- Exact PERCENTILE_CONT is used instead of APPROX_PERCENTILE_CONT, because approximate
+  results changed between runs (e.g. 2-bed flats in 2000: $1,300.5 vs $1,304; exact: $1,319).
+- vw_rent_benchmark: 1,717 of 5,218 combinations (32.9%) meet the 30-lodgement minimum,
+  covering 266,163 of 295,718 lodgements (90.0%).
+- The NSW line is calculated from individual lodgements, not from postcode medians.
