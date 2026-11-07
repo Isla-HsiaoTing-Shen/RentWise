@@ -295,3 +295,17 @@ Most removals (85%) come from Rule 1, which excludes non-whole-dwelling rentals 
 - vw_rent_benchmark: 1,717 of 5,218 combinations (32.9%) meet the 30-lodgement minimum,
   covering 266,163 of 295,718 lodgements (90.0%).
 - The NSW line is calculated from individual lodgements, not from postcode medians.
+
+
+
+### Postcode lookup (03b_create_dim_postcode.sql)
+
+- dim_postcode: 923 NSW postcodes, one row per postcode.
+- Border postcodes (e.g. 2611, 2618) keep only their NSW localities.
+- Some NSW border postcodes (e.g. 2618) are assigned to the
+  "Australian Capital Territory" SA4 region by ABS.
+- Coordinates are the average of each postcode's localities; postcodes with
+  many localities (e.g. 2000) can be pulled slightly off-centre.
+- 13 lodgements (postcodes 2301, 2407, 2789) have no match in dim_postcode.
+  These postcodes do not exist in the source lookup at all. The rows stay in
+  the analysis but cannot be shown on the map (they appear as (Blank) in Power BI).

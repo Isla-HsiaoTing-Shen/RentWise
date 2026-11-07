@@ -10,7 +10,6 @@
    Medians and percentiles use PERCENTILE_CONT, which is exact, so the
    numbers are the same every time the view is queried.
 
-   GO separates batches: SQL Server requires each CREATE VIEW to run on its own.
 ============================================================================= */
 
 
