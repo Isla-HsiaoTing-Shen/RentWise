@@ -35,12 +35,27 @@ QUERIES = {
         WHERE postcode IN (SELECT DISTINCT postcode FROM vw_rent_benchmark)
         ORDER BY postcode
     """,
+
     "benchmark": """
-        SELECT postcode, dwelling_type, bedroom_group, sample_size,
-               p25_rent, median_rent, p75_rent, meets_min_sample
-        FROM vw_rent_benchmark
-        ORDER BY postcode, dwelling_type, bedroom_group
+        SELECT b.postcode, b.dwelling_type, b.bedroom_group, b.sample_size,
+               b.p25_rent, b.median_rent, b.p75_rent,
+               w.p05_rent, w.p95_rent, b.meets_min_sample
+        FROM vw_rent_benchmark AS b
+        LEFT JOIN (
+            SELECT DISTINCT postcode, dwelling_type, bedroom_group,
+                   PERCENTILE_CONT(0.05) WITHIN GROUP (ORDER BY weekly_rent)
+                       OVER (PARTITION BY postcode, dwelling_type, bedroom_group) AS p05_rent,
+                   PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY weekly_rent)
+                       OVER (PARTITION BY postcode, dwelling_type, bedroom_group) AS p95_rent
+            FROM clean_bond_lodgements
+            WHERE lodgement_year = 2025
+        ) AS w
+            ON  w.postcode = b.postcode
+            AND w.dwelling_type = b.dwelling_type
+            AND w.bedroom_group = b.bedroom_group
+        ORDER BY b.postcode, b.dwelling_type, b.bedroom_group
     """,
+
     "trend": """
         SELECT postcode, dwelling_type, bedroom_group, lodgement_quarter,
                sample_size, median_rent
