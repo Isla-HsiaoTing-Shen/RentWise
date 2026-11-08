@@ -69,6 +69,20 @@ QUERIES = {
         FROM vw_rent_trend_nsw
         ORDER BY dwelling_type, bedroom_group, lodgement_quarter
     """,
+
+    "trend_yearly": """
+        SELECT postcode, dwelling_type, bedroom_group, lodgement_year,
+               sample_size, median_rent
+        FROM (
+            SELECT DISTINCT postcode, dwelling_type, bedroom_group, lodgement_year,
+                   COUNT(*) OVER (PARTITION BY postcode, dwelling_type, bedroom_group, lodgement_year) AS sample_size,
+                   PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY weekly_rent)
+                       OVER (PARTITION BY postcode, dwelling_type, bedroom_group, lodgement_year) AS median_rent
+            FROM clean_bond_lodgements
+        ) AS yearly
+        WHERE sample_size >= 30
+        ORDER BY postcode, dwelling_type, bedroom_group, lodgement_year
+    """,
 }
 
 # 3. Where to save: D:\rentwise\data\ (created if it does not exist)

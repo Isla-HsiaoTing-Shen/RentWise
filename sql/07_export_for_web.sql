@@ -101,3 +101,45 @@ SELECT
     median_rent
 FROM vw_rent_trend_nsw
 ORDER BY dwelling_type, bedroom_group, lodgement_quarter;
+
+
+/* -----------------------------------------------------------------------------
+   5. trend_yearly.json – yearly median rent per postcode, dwelling type and bedrooms.
+      Calculated from the individual 2021–2025 lodgements (a median of quarterly
+      medians would not be correct). Only years with at least 30 lodgements (BR-02).
+      Used for the rent trend chart. The 2025 value matches median_rent in benchmark.json.
+----------------------------------------------------------------------------- */
+SELECT
+    postcode,
+    dwelling_type,
+    bedroom_group,
+    lodgement_year,
+    sample_size,
+    median_rent
+FROM (
+    SELECT DISTINCT
+        postcode,
+        dwelling_type,
+        bedroom_group,
+        lodgement_year,
+        COUNT(*)
+            OVER (PARTITION BY postcode, dwelling_type, bedroom_group, lodgement_year) AS sample_size,
+        PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY weekly_rent)
+            OVER (PARTITION BY postcode, dwelling_type, bedroom_group, lodgement_year) AS median_rent
+    FROM clean_bond_lodgements
+) AS yearly
+WHERE sample_size >= 30
+ORDER BY postcode, dwelling_type, bedroom_group, lodgement_year;
+
+
+-- 
+SELECT lodgement_year, sample_size, median_rent
+FROM (
+    SELECT DISTINCT postcode, dwelling_type, bedroom_group, lodgement_year,
+        COUNT(*) OVER (PARTITION BY postcode, dwelling_type, bedroom_group, lodgement_year) AS sample_size,
+        PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY weekly_rent)
+            OVER (PARTITION BY postcode, dwelling_type, bedroom_group, lodgement_year) AS median_rent
+    FROM clean_bond_lodgements
+) AS yearly
+WHERE postcode = '2142' AND dwelling_type = 'House' AND bedroom_group = '3'
+ORDER BY lodgement_year;
