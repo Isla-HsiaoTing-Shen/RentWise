@@ -1,14 +1,23 @@
-# NSW Rent Fairness
+# NSW Rent Market Analysis
 
-A rent benchmark for New South Wales, built from 1.6 million rental bond lodgements (2021–2025).
-For a postcode, dwelling type and number of bedrooms, it shows what a new lease usually costs.
-A renter can use it to check if an asking rent is fair.
+How much did NSW rents rise since 2021, where, and for which homes?
+This project cleans **1.9 million** rental bond lodgements (January 2021 – latest month) and analyses them in SQL and Power BI.
 
-**Tools:** Python (pandas, SQLAlchemy) · Azure SQL (T-SQL) · Power BI
+The same data pipeline also powers **[RentWise](https://rentwise-xi.vercel.app)**, a free website where renters check their own rent ([website code](https://github.com/Isla-HsiaoTing-Shen/rentwise-website)).
+
+**Tools:** Python (pandas, SQLAlchemy) · Azure SQL (T-SQL) · Power BI (DAX)
+
+| | This project | RentWise website |
+|---|---|---|
+| Question | How did the **market** change? | Is **my** rent fair? |
+| User | Housing analysts, councils, journalists | Individual renters |
+| Time | 2021 to the latest month | Latest 12 months |
+
+Requirements: [docs/business_requirements.md](docs/business_requirements.md)
 
 ---
 
-## Key insights
+## Key insights (2021–2025)
 
 All figures are **median weekly rents** for new leases. I use the median, not the average,
 because a few very high rents can pull the average up.
@@ -56,7 +65,7 @@ For houses, the rest of NSW went up a little more than Sydney.
 
 *Greater Sydney uses the ABS definition: all "Sydney -" SA4 regions plus Central Coast.*
 
-### 4. Where renters can most easily pay too much (2-bedroom flats, 2025)
+### 4. Where similar homes rent at the most different prices (2-bedroom flats, 2025)
 
 The range from P25 to P75 shows the middle half of rents. A wide range compared with the
 median means similar flats are rented at very different prices.
@@ -69,7 +78,7 @@ median means similar flats are rented at very different prices.
 | 2065 | Crows Nest, Greenwich, Naremburn, … | $800 | $950 | $1,193 | 41.3% |
 | 2265 | Cooranbong, Martinsville | $270 | $440 | $450 | 40.9% |
 
-In these postcodes, it is most useful to check an asking rent against the benchmark.
+These are the postcodes where renters can most easily pay too much, so checking a rent first helps most.
 
 *Only benchmarks with at least 30 lodgements are included.*
 
@@ -86,7 +95,7 @@ February has about 29% more new leases than December.
 
 ## Dashboard
 
-*(Power BI screenshots will be added here.)*
+*In progress: a Power BI dashboard with an overview, a map and ranking of rent rises, and Greater Sydney vs the rest of NSW. Medians are calculated in DAX from individual leases, and the comparison years move forward automatically as new data arrives.*
 
 ---
 
@@ -94,7 +103,7 @@ February has about 29% more new leases than December.
 
 | Source | What it contains |
 |---|---|
-| NSW Fair Trading, Rental Bond Lodgements | One row per new bond, 2021–2025: date, postcode, dwelling type, bedrooms, weekly rent |
+| NSW Fair Trading, Rental Bond Lodgements | One row per new bond: date, postcode, dwelling type, bedrooms, weekly rent. Yearly files for 2021–2025, monthly files from 2026 |
 | Matthew Proctor, Australian Postcodes | Postcode → suburb names, ABS SA4 region, latitude and longitude |
 
 ---
@@ -102,21 +111,24 @@ February has about 29% more new leases than December.
 ## Method
 
 ```
-Excel / CSV ──→ Python ──→ Azure SQL ──→ Power BI
+Excel / CSV ──→ Python ──→ Azure SQL ──┬──→ Power BI (market analysis)
                (load)    (check, clean, model)
+                                       └──→ Python ──→ JSON ──→ RentWise website
+                                            (latest 12 months)
 ```
 
-1. **Load** – Python loads the raw files into SQL without changes
-   (`load_bonds.py`, `load_postcodes.py`).
+1. **Load** – Python loads the raw files into SQL without changes (`load_bonds.py`, `load_postcodes.py`).
+   `load_bonds.py` only loads files that are not in the database yet, so it is safe to run again.
 2. **Profile** – 13 checks on the raw data before cleaning (`02_profiling.sql`).
-3. **Clean** – 7 cleaning rules. 1,643,058 raw rows → **1,510,130 clean rows (91.9% kept)**.
-   Each rule and the number of rows it removed is in
-   [docs/data_quality_log.md](docs/data_quality_log.md).
-4. **Model** – a postcode table (923 NSW postcodes) and three views for Power BI:
-   - `vw_rent_benchmark` – 2025 P25, median and P75 for each postcode, dwelling type and bedroom group
-   - `vw_rent_trend` – median rent by quarter for each postcode, dwelling type and bedroom group
-   - `vw_rent_trend_nsw` – median rent by quarter for all of NSW
+3. **Clean** – 7 cleaning rules. 1,883,516 raw rows → **1,730,976 clean rows (91.9% kept)**.
+   Each rule and the number of rows it removed is in [docs/data_quality_log.md](docs/data_quality_log.md).
+   New data is checked against the same rules (`04b_check_new_data.sql`): 2026 removed 8.16%, close to 8.09% for 2021–2025.
+4. **Model** – a postcode table (923 NSW postcodes, with Greater Sydney / Rest of NSW) and views for Power BI.
+   `vw_pbi_leases` gives Power BI one row per lease, so DAX can calculate correct medians for any filter.
 5. **Analyse** – the five questions above (`06_analysis.sql`).
+6. **Export for the website** – `export_for_web.py` exports the latest 12 months as JSON.
+   It stops if any of the 12 months is missing.
+7. **Validate** – medians match NSW Rent Check for the same 3 months where samples are large (`08b_compare_rent_check.sql`).
 
 Medians use `PERCENTILE_CONT` (exact), not `APPROX_PERCENTILE_CONT`, because the approximate
 version gave different results each time it ran.
@@ -127,10 +139,10 @@ version gave different results each time it ran.
 
 - Only **new** leases are included. Renewals and existing tenants are not.
 - Rents are entered by agents and landlords. Very high rents were kept, because real
-  high-end rentals cannot be reliably told apart from entry errors. Using medians reduces
-  their effect.
+  high-end rentals cannot be reliably told apart from entry errors. Using medians reduces their effect.
 - In insights 1 and 3, each median mixes all bedroom sizes. If the mix of properties changes,
   the median can change even if prices do not.
+- 2021 was an unusual year (COVID border closures), so changes since 2021 may be larger than in a normal period.
 - 13 lodgements have postcodes that are not in the postcode table. They stay in the analysis
   but cannot be shown on the map.
 - ABS puts some NSW border postcodes in ACT, Queensland or Victoria regions.
@@ -141,7 +153,7 @@ version gave different results each time it ran.
 
 Run these in order from the project folder. Database login details go in a `.env` file.
 
-1. `sql/01_create_raw_tables.sql`
+1. `sql/01_create_raw_tables.sql` (first time only: it deletes the raw table)
 2. `python python/load_bonds.py`
 3. `sql/02_profiling.sql`
 4. `sql/03_create_clean_tables.sql`
@@ -150,3 +162,29 @@ Run these in order from the project folder. Database login details go in a `.env
 7. `sql/03b_create_dim_postcode.sql`
 8. `sql/05_create_views.sql`
 9. `sql/06_analysis.sql`
+10. `python python/export_for_web.py` (website data, saved to `../rentwise/data/`)
+
+`00_exploration.sql` is the first look at the raw data, before the formal checks in `02`.
+
+---
+
+## Updating the data (every 3 months)
+
+NSW Fair Trading publishes one file per month. Every January, April, July and October:
+
+1. Download the last 3 monthly files into `data/`. Do not rename them.
+2. `python python/load_bonds.py` – loads only the new files and prints the rows per month.
+   Every month should come from 1 file.
+3. `sql/04b_check_new_data.sql` – change `@from` to the first new month; the share removed by each rule should be close to earlier years.
+4. `sql/03_create_clean_tables.sql` – rebuilds the clean table; every check in 3d should be 0.
+5. `python python/export_for_web.py` – the 12-month window moves forward by itself.
+6. Check the website locally, then push both repositories.
+7. Open the Power BI file and click **Refresh**. Check "Data to …" shows the new month.
+
+No years or dates need changing in the code. Do not add the yearly file as well as the monthly
+files, or those months will be loaded twice (`load_bonds.py` warns if this happens).
+To reload one file: `DELETE FROM raw_bond_lodgements WHERE source_file = '<file name>';`
+
+**Every January:** once the previous year is complete, re-run `06_analysis.sql` with the new year
+and update the key insights above and in `docs/analysis_findings.md`.
+

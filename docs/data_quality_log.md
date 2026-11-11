@@ -1,5 +1,3 @@
-
-
 ### Check 1: File overview
 
 **Question:** How many rows does each file have, and does each file only contain dates from its own year?
@@ -281,6 +279,47 @@ Rules were added one at a time; each row is counted under the first rule that re
 
 Most removals (85%) come from Rule 1, which excludes non-whole-dwelling rentals and unknown types. Rules 2–7 together remove only 1.2% of rows.
 
+### New data: January – September 2026 (added November 2026)
+
+**Question:** Do the cleaning rules, set on 2021–2025 data, still fit the new monthly files?
+
+**Method:** `04b_check_new_data.sql` on the 9 monthly files for 2026. Each row is counted under the first rule that removes it, the same way as the cleaning summary above.
+
+**Result:**
+
+| Check | Result |
+|---|---|
+| Files | 9 monthly files, one per month (January – September 2026) |
+| Raw rows | 240,458 (22,497 – 29,446 per month, similar to earlier years) |
+| Each month from one file | Yes (no month loaded twice) |
+| Missing or unreadable dates | 0 |
+| Dwelling type codes | F, H, T, O, U, plus 27 rows with invalid codes (1, 3, 4, 5, G, I, P, Y). All of these codes also appeared in 2021–2025 |
+
+| Rule | 2021–2025 | 2026 (Jan–Sep) |
+|---|---|---|
+| 1. Dwelling type not F/H/T | 6.87% | 7.73% |
+| 2. Bedrooms unknown (U) | 0.87% | 0.24% |
+| 3. Weekly rent unknown (U) | 0.19% | 0.09% |
+| 4. 0-bedroom house/terrace | 0.10% | 0.06% |
+| 5. Above bedroom cap | 0.01% | 0.01% |
+| 6. Rent below $100 | 0.05% | 0.03% |
+| 7. Postcode 2617 (ACT only) | <0.01% | 0 |
+| **Total removed** | **8.09%** | **8.16%** |
+| **Rows kept** | 1,510,130 | **220,846** |
+
+**Findings:**
+- The total removed is almost the same (8.16% vs 8.09%), so the rules still fit the new data.
+- Rule 1 removes more in 2026, because dwelling type O (Other) rose from 3.57% to 4.53% of rows. *Possible reason (not tested): more rented rooms or student accommodation.*
+- Unknown bedrooms fell from 0.87% to 0.24%, so the data is more complete than in earlier years.
+- No new invalid codes appeared.
+- The 220,846 rows kept match the 2026 count in `03_create_clean_tables.sql` (check 3b).
+
+**Action:** None needed. The rules are kept as they are.
+
+**Totals after adding 2026:** 1,883,516 raw rows → 1,730,976 clean rows (91.9% kept).
+
+This check is repeated every time new months are added (change `@from` in `04b_check_new_data.sql`).
+
 
 ### Views (05_create_views.sql)
 
@@ -309,3 +348,6 @@ Most removals (85%) come from Rule 1, which excludes non-whole-dwelling rentals 
 - 13 lodgements (postcodes 2301, 2407, 2789) have no match in dim_postcode.
   These postcodes do not exist in the source lookup at all. The rows stay in
   the analysis but cannot be shown on the map (they appear as (Blank) in Power BI).
+
+
+  

@@ -126,6 +126,22 @@ GO
 
 
 
+/* -----------------------------------------------------------------------------
+   View 6: vw_pbi_leases (added in v1.0)
+   One row per lease, only the columns Power BI needs.
+   Power BI calculates medians, changes and ranks with DAX from these rows,
+   so any combination the user picks is correct (medians cannot be averaged, BR-15).
+----------------------------------------------------------------------------- */
+CREATE OR ALTER VIEW vw_pbi_leases AS
+SELECT
+    lodgement_date,
+    postcode,
+    dwelling_type,
+    bedroom_group,
+    weekly_rent
+FROM clean_bond_lodgements;
+GO
+
 
 
 /* -----------------------------------------------------------------------------
@@ -163,3 +179,9 @@ GROUP BY meets_min_sample;
 --5. Check the dimension views
 SELECT * FROM vw_dim_dwelling_type;
 SELECT * FROM vw_dim_bedroom_group ORDER BY bedroom_sort;
+
+
+
+--6. check the PBI leases view: how many rows, first and last lodgement date
+SELECT COUNT(*) AS leases, MIN(lodgement_date) AS first_date, MAX(lodgement_date) AS last_date
+FROM vw_pbi_leases;

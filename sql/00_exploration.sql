@@ -1,3 +1,10 @@
+/* =============================================================================
+   00_exploration.sql
+   First look at the raw data, before the formal checks.
+   Questions found here were turned into the checks in 02_profiling.sql.
+============================================================================= */
+
+
 SELECT TOP 10 * FROM raw_bond_lodgements;
 
 
